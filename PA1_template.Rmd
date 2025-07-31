@@ -7,19 +7,106 @@ output:
 
 
 ## Loading and preprocessing the data
+```{r loading}
+library(lubridate)
+library(datasets)
+library(dplyr)
 
+data <- read.csv(unz("activity.zip","activity.csv",open = "", encoding = getOption("encoding")), na.strings ="NA")
+data$date <- ymd(data$date)
+data$empty <- is.na(data$steps)
+data_clean <- subset(data, !empty)
 
-
+summary(data)
+```
 ## What is mean total number of steps taken per day?
 
+#Create aggregated steps per day  
+```{r aggregatedays, results = "asis"}
+daily_steps <- data_clean %>% group_by(date) %>% summarize(daily_steps_sum = sum(steps))
 
+
+# Create histogram  
+hist(
+  daily_steps$daily_steps_sum, 
+  xlab = "daily steps taken", 
+  main = "Histogram Total Steps each Day", 
+  col = "blue")
+mean_steps <- mean(daily_steps$daily_steps_sum)
+median_steps <- median(daily_steps$daily_steps_sum)
+
+```
+`r mean_steps` is the mean & `r median_steps` is the median on steps taken each day
 
 ## What is the average daily activity pattern?
+```{r aggregateinterval}
+interval_avg <- data_clean %>% group_by(interval) %>% summarize(avg_steps = mean(steps))
+with(
+  interval_avg, 
+  plot(
+    interval, 
+    avg_steps, 
+    type = "l", 
+    main = "Average 5 Min steps over all days", 
+    xlab = "Interval, hhmm"))
 
+max_step_interval <- interval_avg$interval[which.max(interval_avg$avg_steps)]
+
+```
+Over all days, `r max_step_interval` is the interval containing the maximum number of steps  
 
 
 ## Imputing missing values
+```{r missing}
+missing_value <- sum(is.na(data$steps))
 
+```
+There are `r missing_value` NA found in rows of the data set.  
+  
+To fill in the NAs, we take the average number of steps during that 5 minute interval over all days.
+```{r replaceNA}
+fill_data <- data
+for (i in 1:nrow(fill_data)) {
+    if (is.na(fill_data$steps[i])) {
+        # Find index value for interval = average
+        myindex <- which(fill_data$interval[i] == interval_avg$interval)
+        # replace the NA
+        fill_data$steps[i] <- interval_avg[myindex,]$avg_steps
+    }
+}
+fill_data$date <- ymd(fill_data$date)
+
+filldailysteps <-  fill_data %>% group_by(date) %>% summarize(filldaily_steps_sum = sum(steps))
+
+# Create histogram  
+hist(
+  filldailysteps$filldaily_steps_sum, 
+  xlab = "daily steps taken", 
+  main = "Histogram Total Steps each Day", 
+  col = "purple")
+
+fillmean_steps <- mean(filldailysteps$filldaily_steps_sum)
+fillmedian_steps <- median(filldailysteps$filldaily_steps_sum)
+```
+`r fillmean_steps` is the mean & `r fillmedian_steps` is the median on steps taken each day with filled NA rows.  
+The median is now equal to mean.  
 
 
 ## Are there differences in activity patterns between weekdays and weekends?
+
+```{r}
+fill_data$weekday <- weekdays(fill_data$date)
+fill_data$daytype <- "weekday"
+fill_data$daytype[fill_data$weekday %in% c("Samstag", "Sonntag")] <- "weekend"
+
+dayaverage <- fill_data %>%
+    group_by(daytype, interval) %>%
+    summarize(avg_steps=mean(steps))
+
+
+library(ggplot2)
+
+g <- ggplot(dayaverage, mapping = aes(interval, avg_steps))
+g + geom_line() + facet_grid(rows = vars(daytype ))+labs(x = "Interval", y = "Number of Steps") + theme_light()
+
+```
